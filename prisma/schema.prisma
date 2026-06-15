@@ -1,0 +1,27 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Item {
+  id            String   @id @default(cuid())
+  name          String
+  store         String
+  category      String   @default("General")
+  purchasePrice Float
+  purchaseDate  DateTime
+  salePrice     Float?
+  saleDate      DateTime?
+  status        String   @default("unsold") // unsold | sold | listed
+  platform      String?  // where it was sold: eBay, StockX, etc.
+  notes         String?
+  imageUrl      String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@map("items")
+}
