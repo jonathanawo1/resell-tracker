@@ -1,59 +1,48 @@
 import { NextResponse } from "next/server";
-import { prisma } from "@/lib/db";
+import { supabase } from "@/lib/db";
 
 export async function GET() {
-  const items = await prisma.item.findMany();
+  const { data, error } = await supabase.from("items").select("*");
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-  const totalItems = items.length;
+  const items = data || [];
   const soldItems = items.filter((i) => i.status === "sold");
   const unsoldItems = items.filter((i) => i.status === "unsold");
   const listedItems = items.filter((i) => i.status === "listed");
 
-  const totalSpent = items.reduce((s, i) => s + i.purchasePrice, 0);
-  const totalRevenue = soldItems.reduce((s, i) => s + (i.salePrice ?? 0), 0);
-  const totalProfit = totalRevenue - soldItems.reduce((s, i) => s + i.purchasePrice, 0);
-  const inventoryValue = [...unsoldItems, ...listedItems].reduce((s, i) => s + i.purchasePrice, 0);
+  const totalSpent = items.reduce((s: number, i) => s + (i.purchase_price ?? 0), 0);
+  const totalRevenue = soldItems.reduce((s: number, i) => s + (i.sale_price ?? 0), 0);
+  const totalProfit = totalRevenue - soldItems.reduce((s: number, i) => s + i.purchase_price, 0);
+  const inventoryValue = [...unsoldItems, ...listedItems].reduce((s: number, i) => s + i.purchase_price, 0);
 
   const avgROI =
     soldItems.length > 0
-      ? soldItems.reduce((s, i) => {
-          const roi = i.purchasePrice > 0 ? ((i.salePrice! - i.purchasePrice) / i.purchasePrice) * 100 : 0;
+      ? soldItems.reduce((s: number, i) => {
+          const roi = i.purchase_price > 0 ? ((i.sale_price! - i.purchase_price) / i.purchase_price) * 100 : 0;
           return s + roi;
         }, 0) / soldItems.length
       : 0;
 
-  // Best category by profit
   const categoryStats: Record<string, { profit: number; count: number }> = {};
   for (const item of soldItems) {
-    const profit = (item.salePrice ?? 0) - item.purchasePrice;
+    const profit = (item.sale_price ?? 0) - item.purchase_price;
     if (!categoryStats[item.category]) categoryStats[item.category] = { profit: 0, count: 0 };
     categoryStats[item.category].profit += profit;
     categoryStats[item.category].count += 1;
   }
   const bestCategory = Object.entries(categoryStats).sort((a, b) => b[1].profit - a[1].profit)[0]?.[0] ?? null;
 
-  // Best store by profit
   const storeStats: Record<string, { profit: number; count: number }> = {};
   for (const item of soldItems) {
-    const profit = (item.salePrice ?? 0) - item.purchasePrice;
+    const profit = (item.sale_price ?? 0) - item.purchase_price;
     if (!storeStats[item.store]) storeStats[item.store] = { profit: 0, count: 0 };
     storeStats[item.store].profit += profit;
     storeStats[item.store].count += 1;
   }
   const bestStore = Object.entries(storeStats).sort((a, b) => b[1].profit - a[1].profit)[0]?.[0] ?? null;
 
-  // Monthly profit (last 6 months)
-  const monthlyData: Record<string, { revenue: number; cost: number }> = {};
-  for (const item of soldItems) {
-    if (!item.saleDate) continue;
-    const key = new Date(item.saleDate).toLocaleDateString("en-US", { month: "short", year: "2-digit" });
-    if (!monthlyData[key]) monthlyData[key] = { revenue: 0, cost: 0 };
-    monthlyData[key].revenue += item.salePrice ?? 0;
-    monthlyData[key].cost += item.purchasePrice;
-  }
-
   return NextResponse.json({
-    totalItems,
+    totalItems: items.length,
     soldCount: soldItems.length,
     unsoldCount: unsoldItems.length,
     listedCount: listedItems.length,
@@ -66,6 +55,5 @@ export async function GET() {
     bestStore,
     categoryStats,
     storeStats,
-    monthlyData,
   });
 }
